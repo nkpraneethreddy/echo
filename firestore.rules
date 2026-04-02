@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{uid}
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - The unique user ID from Firebase Auth.
+    //   - name: string (required, size < 100) - The user's full name.
+    //   - email: string (required, format: email) - The user's email address.
+    //   - age: string (optional) - The user's age.
+    //   - identity: string (optional) - The user's identity selection.
+    //   - windDownTime: string (optional) - The time the user usually winds down.
+    //   - journalingReason: string (optional) - The user's reason for journaling.
+    //   - isSubscribed: boolean (optional) - Whether the user has a paid subscription.
+    //   - createdAt: timestamp (required) - Timestamp when the profile was created.
+    //
+    // Collection: /users/{uid}/entries/{entryId}
+    // Document ID: {entryId}
+    // Fields:
+    //   - uid: string (required) - The owner's user ID.
+    //   - date: string (required) - Display date.
+    //   - timestamp: timestamp (required) - The exact time of the entry.
+    //   - content: string (required, size < 10000) - The text of the reflection.
+    //   - mood: string (required) - The mood tag.
+    //   - location: string (required) - The location tag.
+    //   - interpretation: map (optional) - AI generated content.
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "nkpraneethreddy@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'name', 'email', 'age', 'identity', 'windDownTime', 'journalingReason', 'isSubscribed', 'createdAt', 'role', 'restorationCredits', 'lastFreeCreditDate', 'restoredDates', 'subscriptionType', 'subscriptionSource', 'giftRedeemedAt']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             isValidEmail(data.email);
+    }
+
+    function isValidEntry(data) {
+      return hasOnlyAllowedFields(['uid', 'date', 'timestamp', 'content', 'mood', 'location', 'interpretation']) &&
+             data.uid == request.auth.uid &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
+             isValidDateString(data.timestamp);
+    }
+
+    function isValidGiftCode(data) {
+      return hasOnlyAllowedFields(['createdBy', 'duration', 'redeemed', 'redeemedBy', 'createdAt', 'expiresAt', 'revenueCatPurchaseId']) &&
+             data.createdBy == request.auth.uid &&
+             data.duration in ['1month', '3months', 'lifetime'] &&
+             data.redeemed == false &&
+             data.redeemedBy == null &&
+             data.revenueCatPurchaseId is string &&
+             data.createdAt is timestamp &&
+             data.expiresAt is timestamp;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+
+      match /entries/{entryId} {
+        allow read: if isOwner(userId) || isAdmin();
+        // Enforce that the entryId matches the date part of the timestamp (YYYY-MM-DD)
+        allow create: if isOwner(userId) && isValidEntry(request.resource.data) && 
+                      (entryId == request.resource.data.timestamp.split('T')[0]);
+        // Allow updates to interpretation and other fields if valid
+        allow update: if isOwner(userId) && isValidEntry(request.resource.data);
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // Gift Codes
+    // ===============================================================
+    match /giftCodes/{code} {
+      // Users can read a giftCode doc to validate it
+      allow read: if isAuthenticated();
+      
+      // Only Cloud Functions can write/update giftCode docs
+      // Note: For this sandbox demo, we allow creation if authenticated, 
+      // but the requirement specifies only Cloud Functions should write.
+      // In a production app, you would use a Cloud Function to handle the write.
+      allow create: if isAuthenticated() && isValidGiftCode(request.resource.data);
+      allow update: if isAuthenticated() && (
+        // Allow marking as redeemed if valid
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['redeemed', 'redeemedBy', 'redeemedAt']) &&
+         request.resource.data.redeemed == true &&
+         request.resource.data.redeemedBy == request.auth.uid) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

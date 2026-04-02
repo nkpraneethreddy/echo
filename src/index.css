@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Manrope:wght@200..800&display=swap');
+
+@theme {
+  --font-headline: "Newsreader", serif;
+  --font-body: "Manrope", sans-serif;
+  --font-label: "Manrope", sans-serif;
+
+  --color-background: #11131c;
+  --color-on-surface: #e1e1ef;
+  --color-on-surface-variant: #c6c5d4;
+  --color-primary: #bcc2ff;
+  --color-primary-container: #142283;
+  --color-on-primary: #152383;
+  --color-secondary: #d4bbff;
+  --color-secondary-container: #543589;
+  --color-on-secondary-container: #c6a5ff;
+  --color-tertiary: #ffba38;
+  --color-tertiary-container: #422c00;
+  --color-on-tertiary-container: #c98c00;
+  --color-surface-container-lowest: #0c0e17;
+  --color-surface-container-low: #191b24;
+  --color-surface-container: #1d1f29;
+  --color-surface-container-high: #282933;
+  --color-surface-container-highest: #32343e;
+  --color-outline-variant: #454652;
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2.5rem;
+}
+
+@layer base {
+  html {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-on-surface font-body selection:bg-primary/30 selection:text-primary overflow-x-hidden;
+    height: 100%;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-overflow-scrolling: touch;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  input, textarea, [contenteditable="true"], .selectable {
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  /* Prevent iOS zoom on input focus — keep font size >= 16px */
+  input, select {
+    font-size: max(16px, 1em) !important;
+  }
+
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+  }
+}
+
+@layer utilities {
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  .pl-safe {
+    padding-left: max(env(safe-area-inset-left), 0px);
+  }
+  .pr-safe {
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+  .mt-safe {
+    margin-top: max(env(safe-area-inset-top), 0px);
+  }
+  .mb-safe {
+    margin-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+
+  .bg-celestial-gradient {
+    background: radial-gradient(circle at top right, rgba(188, 194, 255, 0.05), transparent),
+                radial-gradient(circle at bottom left, rgba(20, 34, 131, 0.2), transparent);
+  }
+
+  .glass-panel {
+    @apply bg-surface-container-highest/60 backdrop-blur-xl;
+  }
+
+  .signature-gradient {
+    background: linear-gradient(135deg, #bcc2ff 0%, #142283 100%);
+  }
+
+  .text-glow {
+    text-shadow: 0 0 15px rgba(188, 194, 255, 0.3);
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .perspective-1000 { perspective: 1000px; }
+  .preserve-3d { transform-style: preserve-3d; }
+  .backface-hidden { backface-visibility: hidden; }
+}

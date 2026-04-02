@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information and settings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique user ID from Firebase Auth." },
+        "name": { "type": "string", "description": "The user's full name." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "age": { "type": "string", "description": "The user's age." },
+        "identity": { "type": "string", "description": "The user's identity selection." },
+        "windDownTime": { "type": "string", "description": "The time the user usually winds down." },
+        "journalingReason": { "type": "string", "description": "The user's reason for journaling." },
+        "isSubscribed": { "type": "boolean", "description": "Whether the user has a paid subscription." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the profile was created." }
+      },
+      "required": ["uid", "name", "email"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "A single reflective journal entry.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The owner's user ID." },
+        "date": { "type": "string", "description": "Display date (e.g., Friday, Oct 27)." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "The exact time of the entry." },
+        "content": { "type": "string", "description": "The text of the reflection." },
+        "mood": { "type": "string", "description": "The mood tag for the entry." },
+        "location": { "type": "string", "description": "The location tag for the entry." },
+        "interpretation": {
+          "type": "object",
+          "properties": {
+            "poem": { "type": "string" },
+            "quote": { "type": "string" },
+            "insight": { "type": "string" },
+            "imageUrl": { "type": "string" }
+          }
+        }
+      },
+      "required": ["uid", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "Stores user profile data."
+    },
+    "/users/{uid}/entries/{entryId}": {
+      "schema": "JournalEntry",
+      "description": "Stores individual journal entries for a user."
+    }
+  }
+}
