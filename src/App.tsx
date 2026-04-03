@@ -81,7 +81,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import { Share } from '@capacitor/share';
+import { Share as NativeShare } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
 // --- Error Handling ---
@@ -2424,8 +2424,8 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
   setCurrentEntry: (s: string) => void,
   key?: string 
 }) {
-  const hasGeminiKey = Boolean(import.meta.env.VITE_GEMINI_API_KEY);
   const runtimeEnv = Capacitor.isNativePlatform() ? 'native' : 'web';
+  const [aiServerConfigured, setAiServerConfigured] = useState<boolean | null>(null);
   const [interpretation, setInterpretation] = useState<{ poem?: string, quote?: string }>(entry?.interpretation || {});
   const [loading, setLoading] = useState(false);
   const [selectedType, setSelectedType] = useState<'poem' | 'quote' | null>(
@@ -2450,6 +2450,19 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
     localStorage.setItem('ne_first_share_shown', 'true');
     setShowFirstPoem(false);
   };
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/ai/status')
+      .then(r => r.json())
+      .then((data) => {
+        if (alive) setAiServerConfigured(Boolean(data?.configured));
+      })
+      .catch(() => {
+        if (alive) setAiServerConfigured(null);
+      });
+    return () => { alive = false; };
+  }, []);
 
   const buildPoemCanvas = async (background: 'nocturnal' | 'transparent'): Promise<Blob> => {
     const text = interpretation.poem || interpretation.quote || entry?.content || "";
@@ -2697,7 +2710,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
       const blob = await buildPoemCanvas(background);
       if (Capacitor.isNativePlatform()) {
         const uri = await saveBlobForNative(blob);
-        await Share.share({
+        await NativeShare.share({
           title: 'My Nocturnal Echo',
           text: 'Distilling my thoughts into art. #NocturnalEcho',
           url: uri,
@@ -2736,7 +2749,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
       const blob = await buildPoemCanvas(background);
       if (Capacitor.isNativePlatform()) {
         const uri = await saveBlobForNative(blob);
-        await Share.share({
+        await NativeShare.share({
           title: 'Save to Camera Roll',
           text: 'Choose Photos/Gallery to save this image to your camera roll.',
           url: uri,
@@ -2940,7 +2953,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className={`max-w-2xl mx-auto mb-6 px-4 py-3 rounded-2xl border text-left ${
-            hasGeminiKey
+            aiServerConfigured
               ? 'bg-primary/5 border-primary/20 text-primary'
               : 'bg-error/10 border-error/30 text-error'
           }`}
@@ -2949,11 +2962,11 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
             Gemini Diagnostics
           </p>
           <p className="font-body text-xs mt-1">
-            API key detected: <span className="font-semibold">{hasGeminiKey ? 'yes' : 'no'}</span> | runtime: <span className="font-semibold">{runtimeEnv}</span>
+            Server AI key: <span className="font-semibold">{aiServerConfigured === null ? 'unknown' : aiServerConfigured ? 'configured' : 'missing'}</span> | runtime: <span className="font-semibold">{runtimeEnv}</span>
           </p>
-          {!hasGeminiKey && (
+          {aiServerConfigured === false && (
             <p className="font-body text-xs mt-1 opacity-90">
-              Missing <code>VITE_GEMINI_API_KEY</code>. Add it to <code>.env</code> and rebuild the app.
+              Missing <code>GEMINI_API_KEY</code> on Railway. Add it in Railway Variables and redeploy.
             </p>
           )}
         </motion.div>
