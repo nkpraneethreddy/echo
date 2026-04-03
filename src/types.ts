@@ -2,6 +2,7 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
+  profilePhoto?: string;
   age: string;
   identity: string;
   windDownTime?: string;

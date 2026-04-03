@@ -59,6 +59,8 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   OAuthProvider,
   User as FirebaseUser
@@ -673,8 +675,14 @@ function App() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
+      setIsLocked(false);
+      localStorage.removeItem('ne_lock_enabled');
+      localStorage.removeItem('ne_lock_method');
+      localStorage.removeItem('ne_lock_pin');
+      navigate('auth');
     } catch (error) {
       console.error("Sign out error", error);
+      window.alert('Could not sign out right now. Please try again.');
     }
   };
 
@@ -825,7 +833,7 @@ function App() {
             onNavigate={navigate}
             onPaywall={(t) => navigateToPaywall('reflect', t)}
             hasReflectedToday={hasReflectedToday}
-            isFirstVisit={entries.length === 0}
+            isFirstVisit={isDataReady && entries.length === 0}
             isSaving={isSaving}
             activeSound={activeSound}
             setActiveSound={setActiveSound}
@@ -869,6 +877,7 @@ function App() {
             onNavigate={navigate}
             onPaywall={(t) => navigateToPaywall('settings', t)}
             onSignOut={handleSignOut}
+            onUpdateProfile={handleUpdateProfile}
             onClearEntries={handleClearEntries}
           />
         )}
@@ -1554,6 +1563,14 @@ function AuthScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    getRedirectResult(auth).catch((err: any) => {
+      if (err?.code !== 'auth/no-auth-event') {
+        setError(err?.message || 'Sign-in redirect failed. Please try again.');
+      }
+    });
+  }, []);
+
   const handleSendOtp = async () => {
     if (!email) return setError('Please enter an email address first.');
     setError('');
@@ -1631,10 +1648,33 @@ function AuthScreen() {
 
   const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    setError('');
+    setLoading(true);
     try {
+      if (Capacitor.isNativePlatform()) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
       await signInWithPopup(auth, provider);
     } catch (err: any) {
-      setError(err.message);
+      const code = err?.code || '';
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/cancelled-popup-request'
+      ) {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectErr: any) {
+          setError(redirectErr?.message || 'Google sign-in failed. Please try again.');
+        }
+      } else {
+        setError(err?.message || 'Google sign-in failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -2022,7 +2062,14 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
   restoringDate: string | null,
   key?: string
 }) {
-  const hour = new Date().getHours();
+  const [timeTick, setTimeTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTimeTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const now = new Date();
+  const hour = now.getHours();
   const isNightTime = hour >= 20 || hour < 6;
   const [gateOverrideHour, setGateOverrideHour] = useState<string | null>(() => {
     try {
@@ -2032,6 +2079,63 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
     }
   });
   const hasGateOverride = gateOverrideHour === String(hour);
+
+  const msUntilSanctuaryOpen = (() => {
+    if (isNightTime || restoringDate) return 0;
+    const open = new Date(now);
+    open.setHours(20, 0, 0, 0);
+    if (now.getTime() >= open.getTime()) return 0;
+    return open.getTime() - now.getTime();
+  })();
+
+  const formatCountdown = (ms: number) => {
+    if (ms <= 0) return '0:00:00';
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const prevHourRef = useRef<number | null>(null);
+  const unlockNotifiedDayRef = useRef<string | null>(null);
+  const [unlockToast, setUnlockToast] = useState(false);
+
+  useEffect(() => {
+    const prev = prevHourRef.current;
+    prevHourRef.current = hour;
+    if (prev === null) return;
+    if (restoringDate || hasGateOverride) return;
+    const dayKey = now.toDateString();
+    const crossedIntoNight = prev < 20 && hour >= 20;
+    if (!crossedIntoNight) return;
+    if (unlockNotifiedDayRef.current === dayKey) return;
+    unlockNotifiedDayRef.current = dayKey;
+    setUnlockToast(true);
+    window.setTimeout(() => setUnlockToast(false), 6000);
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('Your sanctuary is open', {
+          body: 'Nocturnal Echo is ready for reflection.',
+          tag: 'ne-sanctuary-open',
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [timeTick, hour, restoringDate, hasGateOverride]);
+
+  const requestUnlockNotification = async () => {
+    try {
+      if (typeof Notification === 'undefined') return;
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') {
+        window.alert('You will be notified when the sanctuary opens at 8:00 PM (if this app stays open or when you return).');
+      }
+    } catch {
+      /* ignore */
+    }
+  };
 
   const dateStr = restoringDate 
     ? new Date(restoringDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
@@ -2043,8 +2147,6 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   if (!isNightTime && !restoringDate && !hasGateOverride) {
-    const hoursUntilOpen = 20 - hour;
-
     if (isFirstVisit) {
       return (
         <motion.main 
@@ -2138,11 +2240,17 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12 }}
-          className="max-w-[280px]"
+          className="max-w-[320px]"
         >
           <h2 className="font-headline italic text-3xl tracking-tight text-on-surface mb-3">The sun is still high</h2>
-          <p className="text-on-surface-variant font-body text-sm leading-relaxed mb-10">
-            Your sanctuary opens in {hoursUntilOpen} hour{hoursUntilOpen === 1 ? '' : 's'}.
+          <p className="text-on-surface-variant font-body text-sm leading-relaxed mb-2">
+            Your sanctuary opens at 8:00 PM.
+          </p>
+          <div className="font-headline text-4xl md:text-5xl text-primary tabular-nums tracking-tight mb-2">
+            {formatCountdown(msUntilSanctuaryOpen)}
+          </div>
+          <p className="text-on-surface-variant/80 font-body text-xs mb-8">
+            Time remaining until you can reflect
           </p>
         </motion.div>
 
@@ -2152,6 +2260,15 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
           transition={{ delay: 0.2 }}
           className="flex flex-col items-center gap-4"
         >
+          {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+            <button
+              type="button"
+              onClick={requestUnlockNotification}
+              className="text-primary/90 font-body text-sm hover:text-primary transition-colors underline underline-offset-4"
+            >
+              Notify me when it opens
+            </button>
+          )}
           <button 
             onClick={() => onNavigate('journey')}
             className="bg-surface-container-high text-on-surface px-8 py-4 rounded-full font-label text-xs font-bold uppercase tracking-widest hover:bg-surface-container-highest transition-all active:scale-95 inline-flex items-center gap-2"
@@ -2224,6 +2341,19 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
       exit={{ opacity: 0 }}
       className="pt-20 pb-36 px-4 max-w-4xl mx-auto flex flex-col min-h-[100dvh] pt-safe pb-safe"
     >
+      <AnimatePresence>
+        {unlockToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-[max(5.5rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-[100] max-w-sm mx-auto px-5 py-3 rounded-2xl bg-primary-container/95 border border-primary/30 shadow-xl"
+          >
+            <p className="font-label text-[10px] uppercase tracking-widest text-primary mb-1">Sanctuary open</p>
+            <p className="font-body text-sm text-on-surface">Your quiet hours begin — welcome in.</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {showTrialBanner && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -4287,11 +4417,12 @@ function RedeemSuccessCelebration({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries }: { 
+function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onUpdateProfile, onClearEntries }: { 
   user: UserProfile | null, 
   onNavigate: (s: Screen) => void,
   onPaywall: (trigger?: 'poem' | 'library' | 'sound' | 'trial' | 'general') => void,
   onSignOut: () => Promise<void> | void,
+  onUpdateProfile: (updates: Partial<UserProfile>) => Promise<void>,
   onClearEntries: () => Promise<void>,
   key?: string 
 }) {
@@ -4308,6 +4439,7 @@ function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [showRedeemSuccess, setShowRedeemSuccess] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const handlePurchaseGift = async () => {
     if (!user) return;
@@ -4387,6 +4519,48 @@ function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries
     setShowLockSetup(false);
   };
 
+  const handlePhotoUpload = async (file: File | null) => {
+    if (!file || !user) return;
+    if (!file.type.startsWith('image/')) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read image'));
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.readAsDataURL(file);
+      });
+
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Could not load image'));
+        el.src = dataUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      const size = 320;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not process image');
+
+      const src = Math.min(img.width, img.height);
+      const sx = (img.width - src) / 2;
+      const sy = (img.height - src) / 2;
+      ctx.drawImage(img, sx, sy, src, src, 0, 0, size, size);
+
+      const compressed = canvas.toDataURL('image/jpeg', 0.82);
+      await onUpdateProfile({ profilePhoto: compressed });
+    } catch (error) {
+      console.error('Photo upload failed:', error);
+      window.alert('Could not upload profile photo. Please try a different image.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   return (
     <>
     {showLockSetup && (
@@ -4428,7 +4602,12 @@ function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries
           <h1 className="font-headline tracking-wide text-2xl text-primary italic">Settings</h1>
         </div>
         <div className="w-10 h-10 rounded-full overflow-hidden border border-outline-variant/20">
-          <img className="w-full h-full object-cover" src={`https://picsum.photos/seed/${user?.uid || 'user'}/100/100`} alt="Profile" referrerPolicy="no-referrer" />
+          <img
+            className="w-full h-full object-cover"
+            src={user?.profilePhoto || `https://picsum.photos/seed/${user?.uid || 'user'}/100/100`}
+            alt="Profile"
+            referrerPolicy="no-referrer"
+          />
         </div>
       </header>
 
@@ -4447,6 +4626,25 @@ function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries
             </div>
             <ChevronRight className="text-outline-variant group-hover:text-primary transition-colors" />
           </div>
+          <div className="h-px bg-outline-variant/10 mx-2" />
+          <label className="flex items-center justify-between group cursor-pointer">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center text-secondary">
+                <User className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-on-surface font-medium">Profile Photo</p>
+                <p className="text-on-surface-variant text-sm">{isUploadingPhoto ? 'Uploading...' : 'Upload your own photo'}</p>
+              </div>
+            </div>
+            <ChevronRight className="text-outline-variant group-hover:text-primary transition-colors" />
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handlePhotoUpload(e.target.files?.[0] || null)}
+            />
+          </label>
           <div className="h-px bg-outline-variant/10 mx-2" />
           <div className="flex items-center justify-between group cursor-pointer">
             <div className="flex items-center gap-4">
@@ -4672,7 +4870,7 @@ function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries
         </div>
       </section>
 
-      <footer className="pt-8 pb-12 flex flex-col items-center gap-4">
+      <footer className="pt-8 pb-28 flex flex-col items-center gap-4">
         {!user?.isSubscribed ? (
           <div className="w-full rounded-[1.5rem] bg-surface-container-low border border-primary/15 p-5 text-center space-y-3">
             <div className="flex items-center justify-center gap-2 text-primary mb-1">
@@ -4698,7 +4896,7 @@ function SettingsScreen({ user, onNavigate, onPaywall, onSignOut, onClearEntries
         )}
         <button 
           onClick={onSignOut}
-          className="flex items-center gap-3 px-8 py-4 rounded-full bg-surface-container-highest hover:bg-error-container/20 transition-all duration-300 group"
+          className="relative z-[70] flex items-center gap-3 px-8 py-4 rounded-full bg-surface-container-highest hover:bg-error-container/20 transition-all duration-300 group"
         >
           <LogOut className="text-error w-5 h-5 group-hover:scale-110 transition-transform" />
           <span className="font-body text-error font-medium tracking-wide">Sign Out</span>
