@@ -822,6 +822,7 @@ function App() {
             onNavigate={navigate}
             onPaywall={(t) => navigateToPaywall('reflect', t)}
             hasReflectedToday={hasReflectedToday}
+            isFirstVisit={entries.length === 0}
             isSaving={isSaving}
             activeSound={activeSound}
             setActiveSound={setActiveSound}
@@ -2001,13 +2002,14 @@ function WelcomeScreen({ onStart, initialEmail }: { onStart: (p: Omit<UserProfil
   );
 }
 
-function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasReflectedToday, isSaving, activeSound, setActiveSound, ensureAudioContext, userProfile, isProfileLoading, restoringDate }: { 
+function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasReflectedToday, isFirstVisit, isSaving, activeSound, setActiveSound, ensureAudioContext, userProfile, isProfileLoading, restoringDate }: { 
   entry: string, 
   setEntry: (s: string) => void, 
   onFinish: () => Promise<void> | void,
   onNavigate: (s: Screen) => void,
   onPaywall: (trigger?: 'poem' | 'library' | 'sound' | 'trial' | 'general') => void,
   hasReflectedToday: boolean,
+  isFirstVisit: boolean,
   isSaving: boolean,
   activeSound: string | null,
   setActiveSound: (s: string | null) => void,
@@ -2018,7 +2020,15 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
   key?: string
 }) {
   const hour = new Date().getHours();
-  const isNightTime = hour >= 20 || hour < 3; // 8 PM to 3 AM
+  const isNightTime = hour >= 20 || hour < 6;
+  const [gateOverrideHour, setGateOverrideHour] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('ne_gate_override');
+    } catch {
+      return null;
+    }
+  });
+  const hasGateOverride = gateOverrideHour === String(hour);
 
   const dateStr = restoringDate 
     ? new Date(restoringDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
@@ -2028,21 +2038,86 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
   const [showWordToast, setShowWordToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!isNightTime && !restoringDate) {
+  if (!isNightTime && !restoringDate && !hasGateOverride) {
+    const hoursUntilOpen = 20 - hour;
+
+    if (isFirstVisit) {
+      return (
+        <motion.main 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="min-h-[100dvh] bg-background pt-safe pb-safe flex flex-col items-center justify-center px-6 text-center"
+        >
+          <div className="absolute inset-0 -z-10 overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] bg-primary/10 rounded-full blur-[120px]" />
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="mb-7"
+          >
+            <div className="w-24 h-24 rounded-full bg-surface-container-low flex items-center justify-center border border-primary/20 shadow-[0_0_40px_rgba(188,194,255,0.18)]">
+              <Moon className="w-11 h-11 text-primary animate-pulse" />
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 }}
+            className="space-y-3 max-w-md"
+          >
+            <h2 className="font-headline italic text-3xl text-on-surface tracking-tight">You found us early.</h2>
+            <p className="text-on-surface-variant font-body text-sm leading-relaxed">
+              Nocturnal Echo is a space for nighttime reflection - most people write between 8:00 PM and 3:00 AM. But if something is on your mind right now - we're listening.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mt-10 flex flex-col gap-3 w-full max-w-xs"
+          >
+            <button
+              onClick={() => {
+                const currentHour = new Date().getHours();
+                localStorage.setItem('ne_gate_override', String(currentHour));
+                setGateOverrideHour(String(currentHour));
+              }}
+              className="signature-gradient text-on-primary px-7 py-3.5 rounded-full font-label text-xs font-bold uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95"
+            >
+              Write Now
+            </button>
+            <button
+              onClick={() => onNavigate('journey')}
+              className="bg-surface-container-high text-on-surface px-7 py-3.5 rounded-full font-label text-xs font-bold uppercase tracking-widest hover:bg-surface-container-highest transition-all active:scale-95"
+            >
+              I'll Come Back Tonight
+            </button>
+          </motion.div>
+        </motion.main>
+      );
+    }
+
     return (
       <motion.main 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="min-h-[100dvh] pt-safe pb-safe flex flex-col items-center justify-center px-6 text-center"
+        className="min-h-[100dvh] bg-background pt-safe pb-safe flex flex-col items-center justify-center px-6 text-center"
       >
         <div className="absolute inset-0 -z-10 overflow-hidden">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-primary/5 rounded-full blur-[120px]" />
         </div>
         
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
           className="mb-8 relative"
         >
           <div className="w-24 h-24 rounded-full bg-surface-container-low flex items-center justify-center border border-white/5 shadow-2xl">
@@ -2055,17 +2130,43 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
           />
         </motion.div>
 
-        <h2 className="font-headline text-3xl font-light tracking-tight text-on-surface mb-3">The sun is still high</h2>
-        <p className="text-on-surface-variant font-body text-sm leading-relaxed max-w-[260px] mb-10">
-          Nocturnal Echo is a sanctuary for the quiet hours. We open our doors between <span className="text-on-surface font-medium">8:00 PM</span> and <span className="text-on-surface font-medium">3:00 AM</span>.
-        </p>
-
-        <button 
-          onClick={() => onNavigate('journey')}
-          className="bg-surface-container-high text-on-surface px-8 py-4 rounded-full font-label text-xs font-bold uppercase tracking-widest hover:bg-surface-container-highest transition-all active:scale-95"
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="max-w-[280px]"
         >
-          View My Journey
-        </button>
+          <h2 className="font-headline italic text-3xl tracking-tight text-on-surface mb-3">The sun is still high</h2>
+          <p className="text-on-surface-variant font-body text-sm leading-relaxed mb-10">
+            Your sanctuary opens in {hoursUntilOpen} hour{hoursUntilOpen === 1 ? '' : 's'}.
+          </p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <button 
+            onClick={() => onNavigate('journey')}
+            className="bg-surface-container-high text-on-surface px-8 py-4 rounded-full font-label text-xs font-bold uppercase tracking-widest hover:bg-surface-container-highest transition-all active:scale-95 inline-flex items-center gap-2"
+          >
+            <BookOpen className="w-4 h-4" />
+            View My Journey
+          </button>
+
+          <button
+            onClick={() => {
+              const currentHour = new Date().getHours();
+              localStorage.setItem('ne_gate_override', String(currentHour));
+              setGateOverrideHour(String(currentHour));
+            }}
+            className="text-primary/85 font-body text-sm hover:text-primary transition-colors"
+          >
+            Write anyway
+          </button>
+        </motion.div>
       </motion.main>
     );
   }
