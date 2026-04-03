@@ -2037,6 +2037,7 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
   const [showSoundPopup, setShowSoundPopup] = useState(false);
   const [showWordToast, setShowWordToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   if (!isNightTime && !restoringDate && !hasGateOverride) {
     const hoursUntilOpen = 20 - hour;
@@ -2201,8 +2202,6 @@ function ReflectScreen({ entry, setEntry, onFinish, onNavigate, onPaywall, hasRe
     }
     onFinish();
   };
-
-  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   const sounds = [
     { id: 'rain', label: 'Rain', icon: <CloudRain className="w-4 h-4" />, emoji: '🌧️', premium: false },
