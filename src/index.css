@@ -7,8 +7,8 @@
   --font-label: "Manrope", sans-serif;
 
   --color-background: #11131c;
-  --color-on-surface: #e1e1ef;
-  --color-on-surface-variant: #c6c5d4;
+  --color-on-surface: #f0f1ff;
+  --color-on-surface-variant: #d7d8ea;
   --color-primary: #bcc2ff;
   --color-primary-container: #142283;
   --color-on-primary: #152383;
@@ -40,6 +40,7 @@
   body {
     @apply bg-background text-on-surface font-body selection:bg-primary/30 selection:text-primary overflow-x-hidden;
     height: 100%;
+    font-weight: 500;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
@@ -47,6 +48,10 @@
     -webkit-overflow-scrolling: touch;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+  }
+
+  p, span, label, button, a, input, textarea, li {
+    font-weight: 500;
   }
 
   input, textarea, [contenteditable="true"], .selectable {

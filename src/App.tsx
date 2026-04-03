@@ -2424,8 +2424,6 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
   setCurrentEntry: (s: string) => void,
   key?: string 
 }) {
-  const runtimeEnv = Capacitor.isNativePlatform() ? 'native' : 'web';
-  const [aiServerConfigured, setAiServerConfigured] = useState<boolean | null>(null);
   const [interpretation, setInterpretation] = useState<{ poem?: string, quote?: string }>(entry?.interpretation || {});
   const [loading, setLoading] = useState(false);
   const [selectedType, setSelectedType] = useState<'poem' | 'quote' | null>(
@@ -2451,22 +2449,15 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
     setShowFirstPoem(false);
   };
 
-  useEffect(() => {
-    let alive = true;
-    fetch('/api/ai/status')
-      .then(r => r.json())
-      .then((data) => {
-        if (alive) setAiServerConfigured(Boolean(data?.configured));
-      })
-      .catch(() => {
-        if (alive) setAiServerConfigured(null);
-      });
-    return () => { alive = false; };
-  }, []);
-
   const buildPoemCanvas = async (background: 'nocturnal' | 'transparent'): Promise<Blob> => {
-    const text = interpretation.poem || interpretation.quote || entry?.content || "";
-    const isQuote = !!interpretation.quote;
+    const preferredType = selectedType || (interpretation.quote ? 'quote' : 'poem');
+    const text =
+      (preferredType === 'quote' ? interpretation.quote : interpretation.poem) ||
+      interpretation.quote ||
+      interpretation.poem ||
+      entry?.content ||
+      "";
+    const isQuote = preferredType === 'quote' && Boolean(interpretation.quote);
 
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
@@ -2948,30 +2939,6 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
         )}
       </section>
 
-      {showAI && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`max-w-2xl mx-auto mb-6 px-4 py-3 rounded-2xl border text-left ${
-            aiServerConfigured
-              ? 'bg-primary/5 border-primary/20 text-primary'
-              : 'bg-error/10 border-error/30 text-error'
-          }`}
-        >
-          <p className="font-label text-[10px] uppercase tracking-widest">
-            Gemini Diagnostics
-          </p>
-          <p className="font-body text-xs mt-1">
-            Server AI key: <span className="font-semibold">{aiServerConfigured === null ? 'unknown' : aiServerConfigured ? 'configured' : 'missing'}</span> | runtime: <span className="font-semibold">{runtimeEnv}</span>
-          </p>
-          {aiServerConfigured === false && (
-            <p className="font-body text-xs mt-1 opacity-90">
-              Missing <code>GEMINI_API_KEY</code> on Railway. Add it in Railway Variables and redeploy.
-            </p>
-          )}
-        </motion.div>
-      )}
-
       <AnimatePresence>
         {isNewEntry && showAI && (
           <motion.section 
@@ -3083,7 +3050,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
                   {selectedType === 'quote' && (
                     <Quote className="w-10 h-10 md:w-16 md:h-16 text-tertiary/10 mx-auto mb-2" />
                   )}
-                  <h4 className={`font-headline text-2xl md:text-4xl font-light italic leading-relaxed whitespace-pre-line transition-opacity duration-500 ${loading ? 'opacity-40' : 'opacity-100'}`}>
+                  <h4 className={`font-body text-xl md:text-3xl font-medium text-on-surface leading-relaxed whitespace-pre-line transition-opacity duration-500 ${loading ? 'opacity-50' : 'opacity-100'}`}>
                     {loading 
                       ? (selectedType === 'poem' ? "Distilling your day into verse..." : "Finding the words that echo yours...")
                       : (selectedType === 'quote' 
@@ -3137,7 +3104,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+                      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4"
                       style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
                       onClick={() => setShareAction(null)}
                     >
@@ -3171,7 +3138,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
                           {/* Nocturnal Option */}
                           <button
                             onClick={() => shareAction === 'share' ? handleShareWithBg('nocturnal') : handleDownloadWithBg('nocturnal')}
-                            className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95"
+                            className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(188,194,255,0.15)]"
                             style={{ background: 'linear-gradient(135deg, #0c0e17 0%, #11131c 50%, #142283 100%)', border: '1px solid rgba(188,194,255,0.2)', minHeight: '140px' }}
                           >
                             {/* Stars */}
@@ -3181,10 +3148,10 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
                             {/* Glow */}
                             <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at 80% 20%, rgba(188,194,255,0.08) 0%, transparent 60%)' }} />
                             {/* Label */}
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3">
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 bg-black/15">
                               <Moon className="w-5 h-5" style={{ color: '#bcc2ff' }} />
-                              <span className="font-label text-xs font-bold uppercase tracking-widest" style={{ color: '#bcc2ff' }}>Nocturnal</span>
-                              <span className="font-body text-[10px]" style={{ color: 'rgba(188,194,255,0.5)' }}>Dark background</span>
+                              <span className="font-label text-xs font-bold uppercase tracking-widest" style={{ color: '#e7ebff' }}>Nocturnal</span>
+                              <span className="font-body text-[10px]" style={{ color: 'rgba(225,225,239,0.85)' }}>Dark background</span>
                             </div>
                           </button>
 
@@ -3464,6 +3431,7 @@ function JourneyScreen({ entries, onNavigate, onPaywall, onDeleteEntry, setLastI
   // ── Streak Share ─────────────────────────────────────────────────────────
   const [streakShareAction, setStreakShareAction] = useState<'share' | 'download' | null>(null);
   const [isSharingStreak, setIsSharingStreak] = useState(false);
+  const [streakToast, setStreakToast] = useState<string | null>(null);
 
   const buildStreakCanvas = async (background: 'nocturnal' | 'transparent'): Promise<Blob> => {
     const canvas = document.createElement('canvas');
@@ -3551,20 +3519,67 @@ function JourneyScreen({ entries, onNavigate, onPaywall, onDeleteEntry, setLastI
   };
 
   const handleStreakShare = async (background: 'nocturnal' | 'transparent') => {
+    const showStreakToast = (message: string) => {
+      setStreakToast(message);
+      window.setTimeout(() => setStreakToast(null), 2200);
+    };
+    const blobToBase64 = (blob: Blob): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Failed to read image data'));
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result !== 'string') {
+            reject(new Error('Invalid file reader result'));
+            return;
+          }
+          resolve(result.split(',')[1] ?? '');
+        };
+        reader.readAsDataURL(blob);
+      });
+
     if (isSharingStreak) return;
     setIsSharingStreak(true);
     setStreakShareAction(null);
     try {
       const blob = await buildStreakCanvas(background);
-      const file = new File([blob], 'nocturnal-echo-streak.png', { type: 'image/png' });
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: `${streak} Days of Reflection`, text: `${streak} nights of distilling thoughts into art. #NocturnalEcho` });
+      if (Capacitor.isNativePlatform()) {
+        const filename = `nocturnal-echo-streak-${Date.now()}.png`;
+        const base64 = await blobToBase64(blob);
+        const { uri } = await Filesystem.writeFile({
+          path: filename,
+          data: base64,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+        await NativeShare.share({
+          title: `${streak} Days of Reflection`,
+          text: `${streak} nights of distilling thoughts into art. #NocturnalEcho`,
+          url: uri,
+          dialogTitle: 'Share your streak',
+        });
+        showStreakToast('Share sheet opened');
       } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a'); link.download = `nocturnal-echo-streak-${streak}.png`; link.href = url; link.click();
-        URL.revokeObjectURL(url);
+        const file = new File([blob], 'nocturnal-echo-streak.png', { type: 'image/png' });
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: `${streak} Days of Reflection`, text: `${streak} nights of distilling thoughts into art. #NocturnalEcho` });
+          showStreakToast('Shared successfully');
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `nocturnal-echo-streak-${streak}.png`;
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          showStreakToast('Image downloaded');
+        }
       }
-    } catch (e) { console.error('Error sharing streak:', e); }
+    } catch (e) {
+      console.error('Error sharing streak:', e);
+      showStreakToast('Could not share streak');
+    }
     finally { setIsSharingStreak(false); }
   };
 
@@ -3769,7 +3784,7 @@ function JourneyScreen({ entries, onNavigate, onPaywall, onDeleteEntry, setLastI
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+                className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4"
                 style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
                 onClick={() => setStreakShareAction(null)}
               >
@@ -3795,17 +3810,17 @@ function JourneyScreen({ entries, onNavigate, onPaywall, onDeleteEntry, setLastI
                     {/* Nocturnal */}
                     <button
                       onClick={() => handleStreakShare('nocturnal')}
-                      className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95"
+                      className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(255,186,56,0.2)]"
                       style={{ background: 'linear-gradient(135deg, #0c0e17 0%, #11131c 50%, #1a1f3c 100%)', border: '1px solid rgba(255,186,56,0.25)', minHeight: '140px' }}
                     >
                       <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at 50% 50%, rgba(255,186,56,0.1) 0%, transparent 70%)' }} />
                       {[{top:'15%',left:'20%'},{top:'30%',left:'70%'},{top:'65%',left:'40%'},{top:'80%',left:'75%'}].map((pos, i) => (
                         <div key={i} className="absolute w-0.5 h-0.5 rounded-full" style={{ top: pos.top, left: pos.left, backgroundColor: 'rgba(188,194,255,0.5)' }} />
                       ))}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 bg-black/20">
                         <Moon className="w-5 h-5" style={{ color: '#ffba38' }} />
-                        <span className="font-label text-xs font-bold uppercase tracking-widest" style={{ color: '#ffba38' }}>Nocturnal</span>
-                        <span className="font-body text-[10px]" style={{ color: 'rgba(255,186,56,0.45)' }}>Dark background</span>
+                        <span className="font-label text-xs font-bold uppercase tracking-widest" style={{ color: '#ffe0a5' }}>Nocturnal</span>
+                        <span className="font-body text-[10px]" style={{ color: 'rgba(255,245,225,0.9)' }}>Dark background</span>
                       </div>
                     </button>
                     {/* Transparent */}
@@ -3829,6 +3844,18 @@ function JourneyScreen({ entries, onNavigate, onPaywall, onDeleteEntry, setLastI
           </AnimatePresence>
         </motion.div>
       </section>
+      <AnimatePresence>
+        {streakToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            className="fixed bottom-[7.5rem] left-1/2 -translate-x-1/2 z-[130] bg-surface-container-high border border-white/10 rounded-full px-4 py-2"
+          >
+            <p className="font-body text-xs text-on-surface whitespace-nowrap">{streakToast}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <section className="grid grid-cols-2 gap-3 mb-8 perspective-1000">
         <motion.div 
