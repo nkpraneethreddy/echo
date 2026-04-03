@@ -80,6 +80,9 @@ import {
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 // --- Error Handling ---
 
@@ -778,7 +781,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-background text-on-surface font-body selection:bg-primary/30 selection:text-primary overflow-x-hidden">
+    <div className="min-h-[100dvh] bg-background text-on-surface font-body selection:bg-primary/30 selection:text-primary overflow-x-hidden pb-24 md:pb-0">
       {/* ── App Lock Overlay ── */}
       <AnimatePresence>
         {isLocked && firebaseUser && (
@@ -2428,6 +2431,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
   );
   const [isSharing, setIsSharing] = useState(false);
   const [shareAction, setShareAction] = useState<'share' | 'download' | null>(null);
+  const [shareToast, setShareToast] = useState<string | null>(null);
   const [showAI, setShowAI] = useState(isNewEntry || !!entry?.interpretation);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -2651,24 +2655,74 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
     return blob;
   };
 
+  const blobToBase64 = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Failed to read image data'));
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== 'string') {
+          reject(new Error('Invalid file reader result'));
+          return;
+        }
+        resolve(result.split(',')[1] ?? '');
+      };
+      reader.readAsDataURL(blob);
+    });
+
+  const saveBlobForNative = async (blob: Blob) => {
+    const filename = `nocturnal-echo-${Date.now()}.png`;
+    const base64 = await blobToBase64(blob);
+    const { uri } = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Documents,
+      recursive: true,
+    });
+    return uri;
+  };
+
+  const showShareToast = (message: string) => {
+    setShareToast(message);
+    window.setTimeout(() => setShareToast(null), 2200);
+  };
+
   const handleShareWithBg = async (background: 'nocturnal' | 'transparent') => {
     if (isSharing) return;
     setIsSharing(true);
     setShareAction(null);
     try {
       const blob = await buildPoemCanvas(background);
-      const file = new File([blob], 'nocturnal-echo.png', { type: 'image/png' });
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'My Nocturnal Echo', text: 'Distilling my thoughts into art. #NocturnalEcho' });
+      if (Capacitor.isNativePlatform()) {
+        const uri = await saveBlobForNative(blob);
+        await Share.share({
+          title: 'My Nocturnal Echo',
+          text: 'Distilling my thoughts into art. #NocturnalEcho',
+          url: uri,
+          dialogTitle: 'Share your echo',
+        });
+        showShareToast('Share sheet opened');
       } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.download = 'nocturnal-echo.png';
-        link.href = url;
-        link.click();
-        URL.revokeObjectURL(url);
+        const file = new File([blob], 'nocturnal-echo.png', { type: 'image/png' });
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'My Nocturnal Echo', text: 'Distilling my thoughts into art. #NocturnalEcho' });
+          showShareToast('Shared successfully');
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = 'nocturnal-echo.png';
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          showShareToast('Image downloaded');
+        }
       }
-    } catch (error) { console.error('Error sharing:', error); }
+    } catch (error) {
+      console.error('Error sharing:', error);
+      showShareToast('Could not share right now');
+    }
     finally { setIsSharing(false); }
   };
 
@@ -2678,46 +2732,40 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
     setShareAction(null);
     try {
       const blob = await buildPoemCanvas(background);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = `nocturnal-echo-${new Date().getTime()}.png`;
-      link.href = url;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) { console.error('Error downloading:', error); }
+      if (Capacitor.isNativePlatform()) {
+        const uri = await saveBlobForNative(blob);
+        await Share.share({
+          title: 'Save to Camera Roll',
+          text: 'Choose Photos/Gallery to save this image to your camera roll.',
+          url: uri,
+          dialogTitle: 'Save image',
+        });
+        showShareToast('Choose Gallery/Photos to save');
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `nocturnal-echo-${new Date().getTime()}.png`;
+        link.href = url;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        showShareToast('Image downloaded');
+      }
+    } catch (error) {
+      console.error('Error downloading:', error);
+      showShareToast('Could not save image');
+    }
     finally { setIsSharing(false); }
   };
 
   // Legacy wrapper so existing first-poem share button still works
   const handleShare = async () => {
-    if (isSharing) return;
-    setIsSharing(true);
-    try {
-      const blob = await buildPoemCanvas('transparent');
-      const file = new File([blob], 'nocturnal-echo.png', { type: 'image/png' });
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'My Nocturnal Echo', text: 'Distilling my thoughts into art. #NocturnalEcho' });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a'); link.download = 'nocturnal-echo.png'; link.href = url; link.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch (error) { console.error('Error sharing:', error); }
-    finally { setIsSharing(false); }
+    await handleShareWithBg('transparent');
   };
 
   const handleDownload = async () => {
-    if (isSharing) return;
-    setIsSharing(true);
-    try {
-      const blob = await buildPoemCanvas('transparent');
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = `nocturnal-echo-${new Date().getTime()}.png`;
-      link.href = url; link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) { console.error('Error downloading:', error); }
-    finally { setIsSharing(false); }
+    await handleDownloadWithBg('transparent');
   };
 
   const premium = isProfileLoading || isPremiumUser(userProfile);
@@ -2988,7 +3036,7 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
       </section>
       )}
 
-        <div className="mt-8 flex flex-col items-center gap-4">
+        <div className="mt-8 pb-24 flex flex-col items-center gap-4">
           <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 w-full px-2">
             {(interpretation.poem || interpretation.quote) && (
               <>
@@ -3107,11 +3155,24 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
           </div>
           <button 
             onClick={() => onNavigate('journey')}
-            className="text-on-surface-variant hover:text-on-surface font-label text-xs uppercase tracking-[0.2em] transition-colors duration-300"
+            className="relative z-[60] text-on-surface-variant hover:text-on-surface font-label text-xs uppercase tracking-[0.2em] transition-colors duration-300"
           >
             Back to Journey
           </button>
         </div>
+
+        <AnimatePresence>
+          {shareToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              className="fixed bottom-[7.5rem] left-1/2 -translate-x-1/2 z-[70] bg-surface-container-high border border-white/10 rounded-full px-4 py-2"
+            >
+              <p className="font-body text-xs text-on-surface whitespace-nowrap">{shareToast}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.main>
   );
 }
@@ -5045,7 +5106,7 @@ function BottomNav({ active, onNavigate, hasReflectedToday, todayEntry, setLastI
   setLastInterpretation: (e: JournalEntry | null) => void
 }) {
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe pt-3 bg-surface-container-low/80 backdrop-blur-xl rounded-t-[1.5rem] shadow-[0_-8px_32px_rgba(188,194,255,0.06)] border-t border-white/5">
+    <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe pt-3 min-h-[82px] bg-surface-container-low/90 backdrop-blur-xl rounded-t-[1.5rem] shadow-[0_-8px_32px_rgba(188,194,255,0.08)] border-t border-white/8">
       <NavItem 
         icon={<Sparkles className="w-6 h-6" />} 
         label="Reflect" 
@@ -5081,10 +5142,10 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode, label: str
   return (
     <button 
       onClick={onClick}
-      className={`flex flex-col items-center justify-center transition-all duration-200 active:scale-90 px-4 py-2 rounded-2xl min-w-[4rem] ${active ? 'text-primary bg-primary-container/20' : 'text-on-surface/40'}`}
+      className={`flex flex-col items-center justify-center transition-all duration-200 active:scale-90 px-4 py-2 rounded-2xl min-w-[4.5rem] ${active ? 'text-primary bg-primary-container/20' : 'text-on-surface/55'}`}
     >
       {icon}
-      <span className="font-body text-[10px] uppercase tracking-widest mt-1">{label}</span>
+      <span className="font-body text-[11px] uppercase tracking-[0.14em] mt-1 leading-none">{label}</span>
     </button>
   );
 }
