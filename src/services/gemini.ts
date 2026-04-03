@@ -1,9 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const getGeminiClient = () => {
+  const apiKey =
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : undefined);
+
+  if (!apiKey) {
+    throw new Error("Missing Gemini API key. Set VITE_GEMINI_API_KEY for the client app.");
+  }
+
+  return new GoogleGenAI({ apiKey });
+};
 
 export async function generateInterpretation(text: string, type: 'poem' | 'quote', age?: string, gender?: string) {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-2.5-flash";
   
   // Truncate text to avoid token limit issues
   const truncatedText = text.length > 1000 ? text.slice(0, 1000) + "..." : text;
@@ -53,6 +63,7 @@ Return only the quote inside quotation marks. Nothing else.`
   };
 
   try {
+    const ai = getGeminiClient();
     const response = await ai.models.generateContent({
       model,
       contents: prompts[type],
@@ -64,13 +75,16 @@ Return only the quote inside quotation marks. Nothing else.`
     return response.text || "The night remains silent...";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "A quiet echo in the dark...";
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Could not generate an interpretation right now.");
   }
 }
 
 
 export async function generatePersonalizedPrompt(entries: any[]) {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-2.5-flash";
   
   // Take last 10 entries for context
   const context = entries.slice(-10).map(e => e.content).join("\n---\n");
@@ -93,6 +107,7 @@ Output:
 Return only the prompt. No intro, no quotes around it.`;
 
   try {
+    const ai = getGeminiClient();
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
@@ -104,6 +119,9 @@ Return only the prompt. No intro, no quotes around it.`;
     return response.text?.trim() || null;
   } catch (error) {
     console.error("Gemini Personalized Prompt Error:", error);
-    return null;
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Could not generate a personalized prompt.");
   }
 }
