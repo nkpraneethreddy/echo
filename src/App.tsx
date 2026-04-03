@@ -2424,6 +2424,8 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
   setCurrentEntry: (s: string) => void,
   key?: string 
 }) {
+  const hasGeminiKey = Boolean(import.meta.env.VITE_GEMINI_API_KEY);
+  const runtimeEnv = Capacitor.isNativePlatform() ? 'native' : 'web';
   const [interpretation, setInterpretation] = useState<{ poem?: string, quote?: string }>(entry?.interpretation || {});
   const [loading, setLoading] = useState(false);
   const [selectedType, setSelectedType] = useState<'poem' | 'quote' | null>(
@@ -2815,8 +2817,10 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
         interpretation: interpretationToSave
       });
       markInterpreted();
+    } catch (error) {
       console.error("Interpretation error:", error);
-      setError(error.message || "Something went wrong. Please try again.");
+      const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -2839,6 +2843,36 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
       exit={{ opacity: 0 }}
       className="min-h-[100dvh] pt-20 pb-32 px-4 max-w-4xl mx-auto overflow-x-hidden pt-safe pb-safe"
     >
+      <AnimatePresence>
+        {loading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] bg-background/80 backdrop-blur-md flex items-center justify-center px-6"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="w-full max-w-sm rounded-3xl bg-surface-container-low border border-white/10 p-7 text-center shadow-2xl"
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
+                className="mx-auto mb-4 w-12 h-12 rounded-full border-2 border-primary/30 border-t-primary"
+              />
+              <h3 className="font-headline italic text-2xl text-on-surface mb-2">
+                {selectedType === 'poem' ? 'Composing your poem...' : 'Finding your quote...'}
+              </h3>
+              <p className="font-body text-sm text-on-surface-variant">
+                This can take a few seconds. Please keep this screen open.
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── First poem moment — shown once ever ── */}
       <AnimatePresence>
         {showFirstPoem && (
@@ -2900,6 +2934,30 @@ function RevealScreen({ entry, onNavigate, onPaywall, onUpdateEntry, userProfile
           </button>
         )}
       </section>
+
+      {showAI && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`max-w-2xl mx-auto mb-6 px-4 py-3 rounded-2xl border text-left ${
+            hasGeminiKey
+              ? 'bg-primary/5 border-primary/20 text-primary'
+              : 'bg-error/10 border-error/30 text-error'
+          }`}
+        >
+          <p className="font-label text-[10px] uppercase tracking-widest">
+            Gemini Diagnostics
+          </p>
+          <p className="font-body text-xs mt-1">
+            API key detected: <span className="font-semibold">{hasGeminiKey ? 'yes' : 'no'}</span> | runtime: <span className="font-semibold">{runtimeEnv}</span>
+          </p>
+          {!hasGeminiKey && (
+            <p className="font-body text-xs mt-1 opacity-90">
+              Missing <code>VITE_GEMINI_API_KEY</code>. Add it to <code>.env</code> and rebuild the app.
+            </p>
+          )}
+        </motion.div>
+      )}
 
       <AnimatePresence>
         {isNewEntry && showAI && (
